@@ -31,14 +31,20 @@ def extract_prices_from_search(search_results):
     """Extrai preços dos resultados da busca"""
     prices = []
     for result in search_results:
+        # Procura por padrões de preço nos snippets
+        snippet = result.get('snippet', '').lower()
+        title = result.get('title', '').lower()
+        link = result.get('link', '').lower()
+        full_text = f"{title} {snippet} {link}"
+        
         # Procura por padrões de preço (R$ XXX.XXX,XX ou R$ X.XXX.XXX)
         price_patterns = [
-            r'R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)',
-            r'R\$\s*(\d+(?:\.\d{3})*)',
+            r'r\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)',
+            r'r\$\s*(\d+(?:\.\d{3})*)',
         ]
         
         for pattern in price_patterns:
-            matches = re.findall(pattern, result)
+            matches = re.findall(pattern, full_text)
             for match in matches:
                 try:
                     # Remove pontos e vírgulas e converte para float
@@ -149,31 +155,37 @@ if submitted:
         st.markdown("### Análise de Ofertas Similares")
         with st.spinner('Buscando ofertas similares...'):
             # Prepara a busca
-            search_query = f'"{endereco}" venda apartamento'
+            search_query = f"{endereco} venda apartamento preço"
             
-            # Faz a busca web
-            results = st.web_search(search_query)
-            
-            # Extrai e mostra os preços encontrados
-            if results:
-                prices = extract_prices_from_search(results)
-                if prices:
-                    st.markdown("#### Preços encontrados na região:")
-                    price_cols = st.columns(min(5, len(prices)))
-                    for i, price in enumerate(prices[:5]):  # Mostra até 5 preços
-                        with price_cols[i]:
-                            st.markdown(f"**R$ {price:,.2f}**")
-                    
-                    avg_price = sum(prices) / len(prices)
-                    st.markdown(f"**Média dos preços:** R$ {avg_price:,.2f}")
-                    
-                    if valor_mercado > 0:
-                        diff_percent = ((valor_mercado - avg_price) / avg_price) * 100
-                        st.markdown(f"**Diferença para valor estimado:** {diff_percent:+.1f}%")
+            # Faz a busca web usando a função correta
+            try:
+                results = st.web_search(
+                    search_term=search_query,
+                    explanation="Buscando preços de imóveis similares na região informada."
+                )
+                
+                # Extrai e mostra os preços encontrados
+                if results:
+                    prices = extract_prices_from_search(results)
+                    if prices:
+                        st.markdown("#### Preços encontrados na região:")
+                        price_cols = st.columns(min(5, len(prices)))
+                        for i, price in enumerate(prices[:5]):  # Mostra até 5 preços
+                            with price_cols[i]:
+                                st.markdown(f"**R$ {price:,.2f}**")
+                        
+                        avg_price = sum(prices) / len(prices)
+                        st.markdown(f"**Média dos preços:** R$ {avg_price:,.2f}")
+                        
+                        if valor_mercado > 0:
+                            diff_percent = ((valor_mercado - avg_price) / avg_price) * 100
+                            st.markdown(f"**Diferença para valor estimado:** {diff_percent:+.1f}%")
+                    else:
+                        st.warning("Não foram encontrados preços de imóveis similares.")
                 else:
-                    st.warning("Não foram encontrados preços de imóveis similares.")
-            else:
-                st.warning("Não foram encontrados resultados para este endereço.")
+                    st.warning("Não foram encontrados resultados para este endereço.")
+            except Exception as e:
+                st.error(f"Erro ao buscar ofertas similares: {str(e)}")
 
     # Parâmetros fixos
     irpf_percent = 15.0
