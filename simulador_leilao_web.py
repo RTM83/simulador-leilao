@@ -1,9 +1,4 @@
 import streamlit as st
-import locale
-from decimal import Decimal
-
-# Configurar locale para formatação de números
-locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 
 def format_number(value):
     """Formata número com pontos a cada 3 dígitos durante digitação"""
@@ -14,8 +9,13 @@ def format_number(value):
         clean_value = value.replace(".", "").replace(",", "")
         # Converte para número
         number = int(clean_value)
-        # Formata com pontos
-        return f"{number:,}".replace(",", ".")
+        # Formata com pontos manualmente
+        str_number = str(number)
+        parts = []
+        for i in range(len(str_number) - 1, -1, -3):
+            start = max(0, i - 2)
+            parts.append(str_number[start:i + 1])
+        return ".".join(reversed(parts))
     except:
         return value
 
