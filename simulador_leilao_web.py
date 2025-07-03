@@ -3,7 +3,6 @@ import re
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import quote
-from googlesearch import search
 
 def format_number(value):
     """Formata número com pontos a cada 3 dígitos durante digitação"""
@@ -80,17 +79,15 @@ def search_real_estate(endereco):
     sites = [
         f"https://www.zapimoveis.com.br/venda/imoveis/{quote(search_address)}",
         f"https://www.vivareal.com.br/venda/{quote(search_address)}",
-        f"https://www.imovelweb.com.br/imoveis/{quote(search_address)}",
-        f"https://www.quintoandar.com.br/comprar/imovel/{quote(search_address)}"
+        f"https://www.imovelweb.com.br/imoveis/{quote(search_address)}"
     ]
     
     prices = []
     for site in sites:
         try:
-            st.write(f"Buscando em: {site}")  # Debug: mostra qual site está sendo consultado
             response = requests.get(site, headers=headers, timeout=10)
             if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
+                soup = BeautifulSoup(response.text, 'lxml')
                 
                 # Busca por diferentes padrões de preço no HTML
                 price_patterns = [
@@ -114,7 +111,7 @@ def search_real_estate(endereco):
                 # Se não encontrou preços, tenta buscar em elementos específicos
                 if not prices:
                     price_elements = soup.find_all(['span', 'div', 'p'], 
-                        class_=lambda x: x and ('price' in x.lower() or 'valor' in x.lower()))
+                        string=lambda text: text and 'R$' in str(text))
                     for elem in price_elements:
                         text = elem.get_text()
                         for pattern in price_patterns:
