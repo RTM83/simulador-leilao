@@ -226,60 +226,6 @@ st.set_page_config(page_title="Simulador de Arremate de Imóvel em Leilão", lay
 # Título
 st.title("Simulador de Arremate de Imóvel em Leilão")
 
-# Entradas
-st.markdown("### Dados do Imóvel")
-col1, col2 = st.columns(2)
-
-with col1:
-    # Valor do lance
-    lance_str = st.text_input("Lance inicial (R$)", value="500.000")
-    lance = float(lance_str.replace('.', '').replace(',', '.'))
-    st.write(f"Valor formatado: R$ {format_number(lance)}")
-    
-    # Valor de mercado
-    valor_mercado_str = st.text_input("Valor de mercado (R$)", value="1.000.000")
-    valor_mercado = float(valor_mercado_str.replace('.', '').replace(',', '.'))
-    st.write(f"Valor formatado: R$ {format_number(valor_mercado)}")
-    
-    # Área
-    area_str = st.text_input("Área (m²)", value="100")
-    area = float(area_str.replace('.', '').replace(',', '.'))
-    st.write(f"Valor formatado: {format_number(area)} m²")
-
-with col2:
-    # Custo de reforma por m²
-    custo_reforma_str = st.text_input("Custo reforma por m² (R$)", value="1.000")
-    custo_reforma = float(custo_reforma_str.replace('.', '').replace(',', '.'))
-    st.write(f"Valor formatado: R$ {format_number(custo_reforma)}/m²")
-    
-    # IPTU mensal
-    iptu_str = st.text_input("IPTU mensal (R$)", value="100")
-    iptu = float(iptu_str.replace('.', '').replace(',', '.'))
-    st.write(f"Valor formatado: R$ {format_number(iptu)}")
-    
-    # Condomínio mensal
-    condominio_str = st.text_input("Condomínio mensal (R$)", value="1.500")
-    condominio = float(condominio_str.replace('.', '').replace(',', '.'))
-    st.write(f"Valor formatado: R$ {format_number(condominio)}")
-
-# Parâmetros fixos
-st.markdown("### Parâmetros do Investimento")
-col3, col4 = st.columns(2)
-
-with col3:
-    # Percentual de ágio
-    agio = st.slider("Ágio sobre o lance (%)", min_value=10, max_value=80, value=30, step=5)
-    
-    # Comissão de venda
-    comissao = st.slider("Comissão de venda (%)", min_value=2, max_value=8, value=5, step=1)
-
-with col4:
-    # Assessoria jurídica
-    assessoria = st.checkbox("Incluir assessoria jurídica (R$ 5.000)", value=True)
-    
-    # Prazo até a venda
-    prazo_venda = st.slider("Prazo até a venda (meses)", min_value=1, max_value=24, value=6, step=1)
-
 # Cálculos
 valor_arremate = lance * (1 + agio/100)
 custo_total_reforma = area * custo_reforma
