@@ -1,6 +1,9 @@
 import streamlit as st
 import re
+import requests
+from bs4 import BeautifulSoup
 from urllib.parse import quote
+from googlesearch import search
 
 def format_number(value):
     """Formata número com pontos a cada 3 dígitos durante digitação"""
@@ -55,6 +58,88 @@ def extract_prices_from_search(search_results):
                     continue
     
     return sorted(list(set(prices)))  # Remove duplicatas e ordena
+
+def prepare_address(endereco):
+    # Remove caracteres especiais e palavras comuns que podem atrapalhar a busca
+    endereco = endereco.lower()
+    endereco = endereco.replace('rua', '').replace('avenida', '').replace('av.', '')
+    endereco = endereco.replace('número', '').replace('n°', '').replace('nº', '')
+    # Remove espaços extras
+    endereco = ' '.join(endereco.split())
+    return endereco
+
+def search_real_estate(endereco):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    
+    # Prepara o endereço para busca
+    search_address = prepare_address(endereco)
+    
+    # Lista de sites para buscar
+    sites = [
+        f"https://www.zapimoveis.com.br/venda/imoveis/{quote(search_address)}",
+        f"https://www.vivareal.com.br/venda/{quote(search_address)}",
+        f"https://www.imovelweb.com.br/imoveis/{quote(search_address)}",
+        f"https://www.quintoandar.com.br/comprar/imovel/{quote(search_address)}"
+    ]
+    
+    prices = []
+    for site in sites:
+        try:
+            st.write(f"Buscando em: {site}")  # Debug: mostra qual site está sendo consultado
+            response = requests.get(site, headers=headers, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # Busca por diferentes padrões de preço no HTML
+                price_patterns = [
+                    r'R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)',  # R$ 999.999,99
+                    r'R\$\s*(\d+\.?\d*)',  # R$ 999999
+                ]
+                
+                # Busca no texto completo da página
+                for pattern in price_patterns:
+                    matches = re.findall(pattern, response.text)
+                    for match in matches:
+                        try:
+                            # Remove pontos e substitui vírgula por ponto para converter para float
+                            price_str = match.replace('.', '').replace(',', '.')
+                            price = float(price_str)
+                            if 10000 <= price <= 100000000:  # Filtra valores entre 10 mil e 100 milhões
+                                prices.append(price)
+                        except ValueError:
+                            continue
+                
+                # Se não encontrou preços, tenta buscar em elementos específicos
+                if not prices:
+                    price_elements = soup.find_all(['span', 'div', 'p'], 
+                        class_=lambda x: x and ('price' in x.lower() or 'valor' in x.lower()))
+                    for elem in price_elements:
+                        text = elem.get_text()
+                        for pattern in price_patterns:
+                            matches = re.findall(pattern, text)
+                            for match in matches:
+                                try:
+                                    price_str = match.replace('.', '').replace(',', '.')
+                                    price = float(price_str)
+                                    if 10000 <= price <= 100000000:
+                                        prices.append(price)
+                                except ValueError:
+                                    continue
+        
+        except Exception as e:
+            st.warning(f"Erro ao buscar em {site}: {str(e)}")
+            continue
+    
+    # Remove duplicatas e valores muito discrepantes
+    if prices:
+        prices = sorted(prices)
+        # Remove outliers (valores muito diferentes da média)
+        avg = sum(prices) / len(prices)
+        prices = [p for p in prices if abs(p - avg) / avg <= 0.5]  # Remove valores que diferem mais de 50% da média
+    
+    return prices
 
 st.set_page_config(page_title="Simulador de Arremate de Imóvel em Leilão", layout="centered")
 
@@ -154,38 +239,31 @@ if submitted:
     if analisar_ofertas and endereco:
         st.markdown("### Análise de Ofertas Similares")
         with st.spinner('Buscando ofertas similares...'):
-            # Prepara a busca
-            search_query = f"{endereco} venda apartamento preço"
-            
-            # Faz a busca web usando a função correta
             try:
-                results = st.web_search(
-                    search_term=search_query,
-                    explanation="Buscando preços de imóveis similares na região informada."
-                )
+                st.write("Iniciando busca de preços...")  # Debug: indica início da busca
+                prices = search_real_estate(endereco)
                 
-                # Extrai e mostra os preços encontrados
-                if results:
-                    prices = extract_prices_from_search(results)
-                    if prices:
-                        st.markdown("#### Preços encontrados na região:")
-                        price_cols = st.columns(min(5, len(prices)))
-                        for i, price in enumerate(prices[:5]):  # Mostra até 5 preços
-                            with price_cols[i]:
-                                st.markdown(f"**R$ {price:,.2f}**")
-                        
-                        avg_price = sum(prices) / len(prices)
-                        st.markdown(f"**Média dos preços:** R$ {avg_price:,.2f}")
-                        
-                        if valor_mercado > 0:
-                            diff_percent = ((valor_mercado - avg_price) / avg_price) * 100
-                            st.markdown(f"**Diferença para valor estimado:** {diff_percent:+.1f}%")
-                    else:
-                        st.warning("Não foram encontrados preços de imóveis similares.")
+                if prices:
+                    avg_price = sum(prices) / len(prices)
+                    st.markdown("#### Preços encontrados na região:")
+                    
+                    # Mostra até 5 preços em colunas
+                    price_cols = st.columns(min(5, len(prices)))
+                    for i, price in enumerate(prices[:5]):
+                        with price_cols[i]:
+                            st.markdown(f"**R$ {price:,.2f}**")
+                    
+                    st.markdown(f"**Média dos preços:** R$ {avg_price:,.2f}")
+                    st.markdown(f"**Total de preços encontrados:** {len(prices)}")
+                    
+                    if valor_mercado > 0:
+                        diff_percent = ((valor_mercado - avg_price) / avg_price) * 100
+                        st.markdown(f"**Diferença para valor estimado:** {diff_percent:+.1f}%")
                 else:
-                    st.warning("Não foram encontrados resultados para este endereço.")
+                    st.warning("Não foram encontrados preços de imóveis similares. Tente fornecer um endereço mais específico.")
             except Exception as e:
                 st.error(f"Erro ao buscar ofertas similares: {str(e)}")
+                st.write("Detalhes do erro para debug:", str(e))  # Debug: mostra detalhes do erro
 
     # Parâmetros fixos
     irpf_percent = 15.0
