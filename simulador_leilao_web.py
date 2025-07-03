@@ -227,13 +227,13 @@ st.set_page_config(page_title="Simulador de Arremate de Imóvel em Leilão", lay
 st.title("Simulador de Arremate de Imóvel em Leilão")
 
 # Cálculos
-valor_arremate = valor_lance * (1 + agio/100)
-custo_total_reforma = area * custo_reforma
-custo_assessoria = 5000 if assessoria else 0
-custo_condominio = condominio * prazo_venda
-custo_iptu = iptu * prazo_venda
+valor_arremate = valor_lance * (1 + agio_percent/100)
+custo_total_reforma = area_m2 * custo_reforma_m2
+custo_assessoria = 5000 if incluir_assessoria else 0
+custo_condominio = condominio_mensal * prazo_venda_meses
+custo_iptu = iptu_mensal * prazo_venda_meses
 custo_total = valor_arremate + custo_total_reforma + custo_assessoria + custo_condominio + custo_iptu
-comissao_valor = valor_mercado * (comissao/100)
+comissao_valor = valor_mercado * (comissao_venda_percent/100)
 resultado = valor_mercado - comissao_valor - custo_total
 
 # Resultados
