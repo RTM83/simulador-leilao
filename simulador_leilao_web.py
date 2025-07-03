@@ -1,4 +1,6 @@
 import streamlit as st
+import re
+from urllib.parse import quote
 
 def format_number(value):
     """Formata número com pontos a cada 3 dígitos durante digitação"""
@@ -24,6 +26,29 @@ def parse_number(value):
     if not value:
         return 0.0
     return float(value.replace(".", "").replace(",", "."))
+
+def extract_prices_from_search(search_results):
+    """Extrai preços dos resultados da busca"""
+    prices = []
+    for result in search_results:
+        # Procura por padrões de preço (R$ XXX.XXX,XX ou R$ X.XXX.XXX)
+        price_patterns = [
+            r'R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)',
+            r'R\$\s*(\d+(?:\.\d{3})*)',
+        ]
+        
+        for pattern in price_patterns:
+            matches = re.findall(pattern, result)
+            for match in matches:
+                try:
+                    # Remove pontos e vírgulas e converte para float
+                    price = float(match.replace(".", "").replace(",", "."))
+                    if 100000 <= price <= 10000000:  # Filtra preços improváveis
+                        prices.append(price)
+                except:
+                    continue
+    
+    return sorted(list(set(prices)))  # Remove duplicatas e ordena
 
 st.set_page_config(page_title="Simulador de Arremate de Imóvel em Leilão", layout="centered")
 
@@ -67,6 +92,14 @@ st.markdown("""
 st.title("Simulador de Arremate de Imóvel em Leilão")
 
 with st.form("simulador_form"):
+    # Seção de Endereço
+    st.markdown("### Endereço do Imóvel")
+    endereco = st.text_input("Endereço completo", placeholder="Ex: Rua Example, 123, Bairro, Cidade - Estado")
+    col_busca1, col_busca2 = st.columns([3, 1])
+    with col_busca1:
+        analisar_ofertas = st.checkbox("Analisar ofertas similares neste endereço", value=False)
+    
+    st.markdown("### Valores e Características")
     col1, col2 = st.columns(2)
     
     with col1:
@@ -111,6 +144,37 @@ with st.form("simulador_form"):
     submitted = st.form_submit_button("Simular")
 
 if submitted:
+    # Se marcou para analisar ofertas, faz a busca
+    if analisar_ofertas and endereco:
+        st.markdown("### Análise de Ofertas Similares")
+        with st.spinner('Buscando ofertas similares...'):
+            # Prepara a busca
+            search_query = f'"{endereco}" venda apartamento'
+            
+            # Faz a busca web
+            results = st.web_search(search_query)
+            
+            # Extrai e mostra os preços encontrados
+            if results:
+                prices = extract_prices_from_search(results)
+                if prices:
+                    st.markdown("#### Preços encontrados na região:")
+                    price_cols = st.columns(min(5, len(prices)))
+                    for i, price in enumerate(prices[:5]):  # Mostra até 5 preços
+                        with price_cols[i]:
+                            st.markdown(f"**R$ {price:,.2f}**")
+                    
+                    avg_price = sum(prices) / len(prices)
+                    st.markdown(f"**Média dos preços:** R$ {avg_price:,.2f}")
+                    
+                    if valor_mercado > 0:
+                        diff_percent = ((valor_mercado - avg_price) / avg_price) * 100
+                        st.markdown(f"**Diferença para valor estimado:** {diff_percent:+.1f}%")
+                else:
+                    st.warning("Não foram encontrados preços de imóveis similares.")
+            else:
+                st.warning("Não foram encontrados resultados para este endereço.")
+
     # Parâmetros fixos
     irpf_percent = 15.0
     itbi_percent = 3.0
