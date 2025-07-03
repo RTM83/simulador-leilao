@@ -42,7 +42,7 @@ def extract_prices_from_search(search_results):
         # Procura por padrões de preço (R$ XXX.XXX,XX ou R$ X.XXX.XXX)
         price_patterns = [
             r'r\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)',
-            r'r\$\s*(\d+(?:\.\d{3})*)',
+            r'r\$\s*(\d+\.?\d*)',
         ]
         
         for pattern in price_patterns:
@@ -68,77 +68,270 @@ def prepare_address(endereco):
     return endereco
 
 def search_real_estate(endereco):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
+    import urllib.parse
+    import json
     
     # Prepara o endereço para busca
     search_address = prepare_address(endereco)
     
-    # Lista de sites para buscar
-    sites = [
-        f"https://www.zapimoveis.com.br/venda/imoveis/{quote(search_address)}",
-        f"https://www.vivareal.com.br/venda/{quote(search_address)}",
-        f"https://www.imovelweb.com.br/imoveis/{quote(search_address)}"
-    ]
+    # Headers para parecer um navegador normal
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
     
-    prices = []
-    for site in sites:
-        try:
-            response = requests.get(site, headers=headers, timeout=10)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'lxml')
-                
-                # Busca por diferentes padrões de preço no HTML
-                price_patterns = [
-                    r'R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)',  # R$ 999.999,99
-                    r'R\$\s*(\d+\.?\d*)',  # R$ 999999
-                ]
-                
-                # Busca no texto completo da página
-                for pattern in price_patterns:
-                    matches = re.findall(pattern, response.text)
-                    for match in matches:
-                        try:
-                            # Remove pontos e substitui vírgula por ponto para converter para float
-                            price_str = match.replace('.', '').replace(',', '.')
-                            price = float(price_str)
-                            if 10000 <= price <= 100000000:  # Filtra valores entre 10 mil e 100 milhões
-                                prices.append(price)
-                        except ValueError:
-                            continue
-                
-                # Se não encontrou preços, tenta buscar em elementos específicos
-                if not prices:
-                    price_elements = soup.find_all(['span', 'div', 'p'], 
-                        string=lambda text: text and 'R$' in str(text))
-                    for elem in price_elements:
-                        text = elem.get_text()
-                        for pattern in price_patterns:
-                            matches = re.findall(pattern, text)
-                            for match in matches:
-                                try:
-                                    price_str = match.replace('.', '').replace(',', '.')
-                                    price = float(price_str)
-                                    if 10000 <= price <= 100000000:
-                                        prices.append(price)
-                                except ValueError:
-                                    continue
+    # Lista para armazenar os resultados
+    results = []
+    
+    try:
+        # Usa a API do DuckDuckGo para buscar
+        sites = ['zapimoveis.com.br', 'vivareal.com.br', 'imovelweb.com.br']
         
-        except Exception as e:
-            st.warning(f"Erro ao buscar em {site}: {str(e)}")
-            continue
+        for site in sites:
+            st.write(f"Buscando em {site}...")
+            
+            # Monta a URL de busca
+            search_query = f"site:{site} {search_address}"
+            encoded_query = urllib.parse.quote(search_query)
+            url = f"https://duckduckgo.com/?q={encoded_query}&format=json&no_html=1&no_redirect=1"
+            
+            try:
+                response = requests.get(url, headers=headers)
+                
+                if response.status_code == 200:
+                    # Procura por padrões de preço no texto retornado
+                    text = response.text
+                    
+                    # Padrões de preço
+                    price_patterns = [
+                        r'R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)',
+                        r'R\$\s*(\d+\.?\d*)'
+                    ]
+                    
+                    # Padrões de área
+                    area_patterns = [
+                        r'(\d+)\s*m²',
+                        r'(\d+)\s*metros quadrados',
+                        r'área\s*(?:total|privativa|útil)?\s*(?:de)?\s*(\d+)\s*m²'
+                    ]
+                    
+                    # Extrai preços
+                    for pattern in price_patterns:
+                        matches = re.findall(pattern, text, re.IGNORECASE)
+                        for match in matches:
+                            try:
+                                price_str = match.replace('.', '').replace(',', '.')
+                                price = float(price_str)
+                                
+                                if 100000 <= price <= 10000000:  # Filtra valores improváveis
+                                    # Procura por área próxima ao preço
+                                    area = None
+                                    for area_pattern in area_patterns:
+                                        area_matches = re.findall(area_pattern, text, re.IGNORECASE)
+                                        if area_matches:
+                                            try:
+                                                area = float(area_matches[0])
+                                                if 20 <= area <= 1000:  # Filtra áreas improváveis
+                                                    break
+                                            except:
+                                                continue
+                                    
+                                    results.append({
+                                        'price': price,
+                                        'area': area,
+                                        'price_per_m2': price/area if area else None,
+                                        'site': site
+                                    })
+                            except:
+                                continue
+                
+                else:
+                    st.warning(f"Não foi possível acessar resultados de {site}")
+                
+            except Exception as e:
+                st.warning(f"Erro ao buscar em {site}: {str(e)}")
+                continue
+            
+            # Pequeno delay entre requisições
+            import time
+            time.sleep(1)
     
-    # Remove duplicatas e valores muito discrepantes
-    if prices:
-        prices = sorted(prices)
-        # Remove outliers (valores muito diferentes da média)
-        avg = sum(prices) / len(prices)
-        prices = [p for p in prices if abs(p - avg) / avg <= 0.5]  # Remove valores que diferem mais de 50% da média
+    except Exception as e:
+        st.error(f"Erro durante a busca: {str(e)}")
+        return []
     
-    return prices
+    # Remove duplicatas baseado no preço
+    unique_results = []
+    seen_prices = set()
+    
+    for r in results:
+        if r['price'] not in seen_prices:
+            unique_results.append(r)
+            seen_prices.add(r['price'])
+    
+    # Pega os 5 resultados mais relevantes
+    final_results = unique_results[:5]
+    
+    if final_results:
+        st.markdown("### Anúncios Similares Encontrados")
+        
+        # Mostra cada anúncio em colunas
+        cols = st.columns(min(len(final_results), 5))
+        
+        prices = []
+        areas = []
+        prices_per_m2 = []
+        
+        for idx, (result, col) in enumerate(zip(final_results, cols)):
+            with col:
+                st.markdown(f"**Anúncio {idx+1}**")
+                st.markdown(f"Fonte: {result['site']}")
+                st.markdown(f"Preço: R$ {result['price']:,.2f}")
+                if result['area']:
+                    st.markdown(f"Área: {result['area']:.0f} m²")
+                if result['price_per_m2']:
+                    st.markdown(f"R$/m²: {result['price_per_m2']:,.2f}")
+                
+                prices.append(result['price'])
+                if result['area']:
+                    areas.append(result['area'])
+                if result['price_per_m2']:
+                    prices_per_m2.append(result['price_per_m2'])
+        
+        # Mostra médias
+        st.markdown("### Médias Calculadas")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            avg_price = sum(prices) / len(prices)
+            st.metric("Preço Médio", f"R$ {avg_price:,.2f}")
+        
+        with col2:
+            if areas:
+                avg_area = sum(areas) / len(areas)
+                st.metric("Área Média", f"{avg_area:.0f} m²")
+        
+        with col3:
+            if prices_per_m2:
+                avg_price_per_m2 = sum(prices_per_m2) / len(prices_per_m2)
+                st.metric("R$/m² Médio", f"R$ {avg_price_per_m2:,.2f}")
+        
+        return prices
+    else:
+        st.warning("Não foram encontrados anúncios similares. Tente um endereço mais específico.")
+        return []
 
+# Configuração da página
 st.set_page_config(page_title="Simulador de Arremate de Imóvel em Leilão", layout="centered")
+
+# Título
+st.title("Simulador de Arremate de Imóvel em Leilão")
+
+# Entradas
+st.markdown("### Dados do Imóvel")
+col1, col2 = st.columns(2)
+
+with col1:
+    # Valor do lance
+    lance_str = st.text_input("Lance inicial (R$)", value="500.000")
+    lance = float(lance_str.replace('.', '').replace(',', '.'))
+    st.write(f"Valor formatado: R$ {format_number(lance)}")
+    
+    # Valor de mercado
+    valor_mercado_str = st.text_input("Valor de mercado (R$)", value="1.000.000")
+    valor_mercado = float(valor_mercado_str.replace('.', '').replace(',', '.'))
+    st.write(f"Valor formatado: R$ {format_number(valor_mercado)}")
+    
+    # Área
+    area_str = st.text_input("Área (m²)", value="100")
+    area = float(area_str.replace('.', '').replace(',', '.'))
+    st.write(f"Valor formatado: {format_number(area)} m²")
+
+with col2:
+    # Custo de reforma por m²
+    custo_reforma_str = st.text_input("Custo reforma por m² (R$)", value="1.000")
+    custo_reforma = float(custo_reforma_str.replace('.', '').replace(',', '.'))
+    st.write(f"Valor formatado: R$ {format_number(custo_reforma)}/m²")
+    
+    # IPTU mensal
+    iptu_str = st.text_input("IPTU mensal (R$)", value="100")
+    iptu = float(iptu_str.replace('.', '').replace(',', '.'))
+    st.write(f"Valor formatado: R$ {format_number(iptu)}")
+    
+    # Condomínio mensal
+    condominio_str = st.text_input("Condomínio mensal (R$)", value="1.500")
+    condominio = float(condominio_str.replace('.', '').replace(',', '.'))
+    st.write(f"Valor formatado: R$ {format_number(condominio)}")
+
+# Parâmetros fixos
+st.markdown("### Parâmetros do Investimento")
+col3, col4 = st.columns(2)
+
+with col3:
+    # Percentual de ágio
+    agio = st.slider("Ágio sobre o lance (%)", min_value=10, max_value=80, value=30, step=5)
+    
+    # Comissão de venda
+    comissao = st.slider("Comissão de venda (%)", min_value=2, max_value=8, value=5, step=1)
+
+with col4:
+    # Assessoria jurídica
+    assessoria = st.checkbox("Incluir assessoria jurídica (R$ 5.000)", value=True)
+    
+    # Prazo até a venda
+    prazo_venda = st.slider("Prazo até a venda (meses)", min_value=1, max_value=24, value=6, step=1)
+
+# Cálculos
+valor_arremate = lance * (1 + agio/100)
+custo_total_reforma = area * custo_reforma
+custo_assessoria = 5000 if assessoria else 0
+custo_condominio = condominio * prazo_venda
+custo_iptu = iptu * prazo_venda
+custo_total = valor_arremate + custo_total_reforma + custo_assessoria + custo_condominio + custo_iptu
+comissao_valor = valor_mercado * (comissao/100)
+resultado = valor_mercado - comissao_valor - custo_total
+
+# Resultados
+st.markdown("### Resultados")
+
+# Primeira linha de resultados
+col5, col6, col7 = st.columns(3)
+
+with col5:
+    st.metric("Valor do arremate", f"R$ {format_number(valor_arremate)}")
+    st.metric("Custo da reforma", f"R$ {format_number(custo_total_reforma)}")
+    
+with col6:
+    st.metric("Assessoria jurídica", f"R$ {format_number(custo_assessoria)}")
+    st.metric("Condomínio total", f"R$ {format_number(custo_condominio)}")
+    
+with col7:
+    st.metric("IPTU total", f"R$ {format_number(custo_iptu)}")
+    st.metric("Comissão de venda", f"R$ {format_number(comissao_valor)}")
+
+# Segunda linha de resultados
+col8, col9, col10 = st.columns(3)
+
+with col8:
+    st.metric("Custo total", f"R$ {format_number(custo_total)}")
+    
+with col9:
+    st.metric("Valor de venda", f"R$ {format_number(valor_mercado)}")
+    
+with col10:
+    st.metric("Resultado", f"R$ {format_number(resultado)}")
+
+# Cálculo de rentabilidade
+rentabilidade = (resultado / custo_total) * 100
+rentabilidade_mensal = ((1 + rentabilidade/100) ** (1/prazo_venda) - 1) * 100
+
+st.markdown("### Análise de Rentabilidade")
+col11, col12 = st.columns(2)
+
+with col11:
+    st.metric("Rentabilidade total", f"{rentabilidade:.1f}%")
+    
+with col12:
+    st.metric("Rentabilidade mensal", f"{rentabilidade_mensal:.2f}%")
 
 # Configuração para reduzir o espaçamento e melhorar formatação
 st.markdown("""
@@ -176,8 +369,6 @@ st.markdown("""
         }
     </style>
 """, unsafe_allow_html=True)
-
-st.title("Simulador de Arremate de Imóvel em Leilão")
 
 with st.form("simulador_form"):
     # Seção de Endereço
