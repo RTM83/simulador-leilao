@@ -711,9 +711,9 @@ if submitted:
         st.markdown(f"**Área:** {area_m2:.2f} m²")
 
         st.markdown('<p class="section-title">Tributos e Registro</p>', unsafe_allow_html=True)
-        st.markdown(f"IRPF: R$ {irpf:,.2f}")
-        st.markdown(f"ITBI: R$ {itbi:,.2f}")
-        st.markdown(f"Registro: R$ {registro:,.2f}")
+        st.markdown(f"**IRPF:** R$ {irpf:,.2f}")
+        st.markdown(f"**ITBI:** R$ {itbi:,.2f}")
+        st.markdown(f"**Registro:** R$ {registro:,.2f}")
         st.markdown(f"**Total:** R$ {total_tributos:,.2f}")
 
     with col2:
@@ -724,8 +724,8 @@ if submitted:
         st.markdown(f"**Reforma:** R$ {custo_reforma:,.2f}")
         
         st.markdown('<p class="section-title">Custos Mensais</p>', unsafe_allow_html=True)
-        st.markdown(f"IPTU: R$ {total_iptu:,.2f}")
-        st.markdown(f"Condomínio: R$ {total_condominio:,.2f}")
+        st.markdown(f"**IPTU:** R$ {total_iptu:,.2f}")
+        st.markdown(f"**Condomínio:** R$ {total_condominio:,.2f}")
         
         if incluir_comissao_venda:
             st.markdown(f"**Comissão Venda:** R$ {comissao_venda:,.2f}")
@@ -790,4 +790,31 @@ if submitted:
         # Exibir linha da tabela com formatação uniforme
         st.markdown(f"| {agio_percent:>3} | {valor_arremate:>11,.0f} | **{resultado:>9,.0f}** | {percentual:>8.1f} | {rendimento_mensal:>13.2f} |")
     
-    st.markdown('</div>', unsafe_allow_html=True) 
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Perguntar se o usuário deseja gerar um PDF da análise
+    st.markdown("---")
+    gerar_pdf = st.checkbox("Deseja gerar um PDF desta análise?")
+    if gerar_pdf:
+        import io
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+
+        buffer = io.BytesIO()
+        c = canvas.Canvas(buffer, pagesize=A4)
+        y = 800
+        linhas = [
+            "Simulação de Arremate de Imóvel",
+            f"Endereço: {endereco}",
+            f"Valor de mercado: R$ {valor_mercado:,.2f}",
+            f"Lance inicial: R$ {valor_lance:,.2f}",
+            "---",
+            f"Total investido: R$ {total_investido:,.2f}",
+            f"Resultado: R$ {resultado:,.2f} ({percentual:.1f}%)",
+        ]
+        for linha in linhas:
+            c.drawString(30, y, linha)
+            y -= 20
+        c.save()
+        buffer.seek(0)
+        st.download_button("Baixar PDF", buffer, file_name="analise_imovel.pdf", mime="application/pdf") 
